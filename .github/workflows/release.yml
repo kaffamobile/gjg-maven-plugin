@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Release to Maven Central
+    runs-on: ubuntu-latest
+    if: github.repository == 'kaffamobile/gjg-maven-plugin'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: 'maven'
+          server-id: central
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Setup Kotlin
+        uses: fwilhe2/setup-kotlin@main
+        with:
+          version: '2.2.0'
+
+      - name: Install Wine
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y wine wine32 wine64
+          wine --version
+
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Building version: $VERSION"
+
+      - name: Update version in pom.xml
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          VERSION="${VERSION#v}"
+          mvn versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+          echo "📝 Updated pom.xml to version $VERSION"
+
+      - name: Build and verify
+        run: |
+          mvn clean package
+          mvn verify
+
+      - name: Create release notes
+        id: release_notes
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          VERSION_NO_V="${VERSION#v}"
+          
+          cat << EOF > release_notes.md
+          ## 🚀 GJG Maven Plugin ${VERSION}
+          
+          ### 📦 Maven Central
+          
+          Add to your \`pom.xml\`:
+          
+          \`\`\`xml
+          <plugin>
+              <groupId>io.github.kaffamobile.tools.maven</groupId>
+              <artifactId>gjg-maven-plugin</artifactId>
+              <version>${VERSION_NO_V}</version>
+          </plugin>
+          \`\`\`
+          
+          ### 🔄 What's Changed
+          
+          EOF
+          
+          if git describe --tags --abbrev=0 HEAD^ 2>/dev/null; then
+            LAST_TAG=$(git describe --tags --abbrev=0 HEAD^)
+            git log --pretty=format:"- %s (%h)" $LAST_TAG..HEAD >> release_notes.md
+          else
+            git log --pretty=format:"- %s (%h)" --max-count=20 >> release_notes.md
+          fi
+          
+          echo "" >> release_notes.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$LAST_TAG...${VERSION}" >> release_notes.md
+
+      - name: Deploy to Maven Central
+        run: |
+          mvn clean deploy -P release -DskipTests
+        env:
+          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.get_version.outputs.VERSION, '-beta') || contains(steps.get_version.outputs.VERSION, '-rc') }}
+
+      - name: Summary
+        run: |
+          echo "✅ Release completed!"
+          echo "📦 Version ${{ steps.get_version.outputs.VERSION }} will be available on Maven Central in ~30 minutes"
+          echo "🔗 Check: https://search.maven.org/artifact/io.github.kaffamobile.tools.maven/gjg-maven-plugin"

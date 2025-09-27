@@ -33,7 +33,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.kaffamobile.tools.maven</groupId>
     <artifactId>gjg-maven-plugin</artifactId>
-    <version>0.0.1</version>
+    <version>1.0.0</version>
     <executions>
         <execution>
             <phase>package</phase>
@@ -58,7 +58,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.kaffamobile.tools.maven</groupId>
     <artifactId>gjg-maven-plugin</artifactId>
-    <version>0.0.1</version>
+    <version>1.0.0</version>
     <configuration>
         <outputFile>${project.build.directory}/${project.artifactId}.exe</outputFile>
         <jarFile>${project.artifactId}.jar</jarFile>
